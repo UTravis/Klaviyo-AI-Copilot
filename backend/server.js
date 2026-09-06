@@ -36,7 +36,7 @@ app.post("/api/generate", async (req, res) => {
   } catch (err) {
     console.error("Generate error:", err);
     const status = err.status || 500;
-    const message = (status === 503) ? "The model is experiencing high demand right now." : "Failed to generate flow copy.";
+    const message = (status === 503) ? "The model is experiencing high demand right now." : "Failed to generate copy.";
     res.status(status).json({ error: message, details: err.message });
   }
 });

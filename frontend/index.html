@@ -130,7 +130,7 @@
     <label>Product / Offer Description</label>
     <textarea id="productDescription" placeholder="e.g. Handmade ceramic homeware, mid-range price point, targets design-conscious 30-45 year olds"></textarea>
 
-    <label>Tone / Voice Notes (optional)</label>
+    <label>Tone / Voice Notes</label>
     <input id="toneNotes" placeholder="e.g. Warm, a little witty, never salesy" />
 
     <label>Flow Type</label>
@@ -187,8 +187,8 @@ async function generateFlow() {
     targetAudience: document.getElementById("targetAudience").value.trim(),
   };
 
-  if (!payload.brandName || !payload.productDescription) {
-    error.textContent = "Please fill in brand name and product description.";
+  if (!payload.brandName || !payload.productDescription || !toneNotes) {
+    error.textContent = "Please fill in brand name, product description and the brand tone/voice.";
     error.style.display = "block";
     return;
   }
