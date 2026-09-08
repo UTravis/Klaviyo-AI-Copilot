@@ -4,6 +4,10 @@ const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { buildPrompt } = require("./promptBuilder");
 
+//checking state: developement || production
+const pkg = require("./package.json");
+const isProduction = pkg.stage === "production"; 
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -75,24 +79,40 @@ app.post("/api/generate", async (req, res) => {
 // Klaviyo's Create Campaign call alone only sets subject/preview/from info —
 // the actual body content has to be attached via a template, separately.
 const KLAVIYO_REVISION = "2026-07-15";
-const KLAVIYO_HEADERS = {
-  Authorization: `Klaviyo-API-Key ${process.env.KLAVIYO_API_KEY}`,
-  "Content-Type": "application/json",
-  revision: KLAVIYO_REVISION,
-};
 
 app.post("/api/push-to-klaviyo", async (req, res) => {
-  const { subjectLine, previewText, body, listId, fromEmail, fromLabel, templateType } = req.body;
+  const { subjectLine, previewText, body, listId, fromEmail, fromLabel, templateType, apiKey } = req.body;
 
-  if (!process.env.KLAVIYO_API_KEY) {
-    return res.status(400).json({ error: "KLAVIYO_API_KEY is not configured on the server." });
+  let effectiveApiKey;
+  if (isProduction) {
+    // In production, always require the visitor's own key — never fall back
+    // to a server-side key, since that would push to the wrong account.
+    if (!apiKey) {
+      return res.status(400).json({ error: "apiKey is required (your own Klaviyo private API key)." });
+    }
+    effectiveApiKey = apiKey;
+  } else {
+    // In development, prefer the server's own .env key for convenience,
+    // but still accept one from the request if provided.
+    effectiveApiKey = process.env.KLAVIYO_API_KEY || apiKey;
+    if (!effectiveApiKey) {
+      return res.status(400).json({ error: "No Klaviyo API key available — set KLAVIYO_API_KEY in .env or provide one in the form." });
+    }
   }
+
+
   if (!listId) {
     return res.status(400).json({ error: "listId is required (a Klaviyo list/segment ID to attach the draft to)." });
   }
   if (!fromEmail) {
     return res.status(400).json({ error: "fromEmail is required (the sender email address on your verified Klaviyo domain)." });
   }
+
+  const KLAVIYO_HEADERS = {
+    Authorization: `Klaviyo-API-Key ${effectiveApiKey}`,
+    "Content-Type": "application/json",
+    revision: KLAVIYO_REVISION,
+  };
 
   try {
     // --- Step 1: Create the campaign shell + message ---
@@ -206,6 +226,10 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+app.get("/api/config", (req, res) => {
+  res.json({ requireApiKey: isProduction });
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

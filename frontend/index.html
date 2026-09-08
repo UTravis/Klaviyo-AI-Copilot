@@ -344,14 +344,29 @@ async function copyEmail(btn, subjectLine, previewText, body) {
 }
 
 let pendingEmailData = null;
+let klaviyoConfig = { requireApiKey: false };
 
-function pushToKlaviyo(subjectLine, previewText, body) {
+async function pushToKlaviyo(subjectLine, previewText, body) {
   pendingEmailData = { subjectLine, previewText, body };
+
+  const configRes = await fetch(`${API_BASE}/api/config`);
+  klaviyoConfig = await configRes.json();
+
   const modal = document.getElementById("klaviyoModal");
   const content = document.getElementById("klaviyoModalContent");
 
+  const apiKeyFieldHtml = klaviyoConfig.requireApiKey
+    ? `<label>Your Klaviyo Private API Key</label>
+       <input id="modalApiKey" type="password" placeholder="pk_xxxxxxxx" />
+       <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+         Never stored — used only for this request. Get yours in Klaviyo under Settings → API Keys.
+       </p>`
+    : "";
+
+
   content.innerHTML = `
     <h3>Push to Klaviyo</h3>
+    ${apiKeyFieldHtml}
     <label>Klaviyo List/Segment ID</label>
     <input id="modalListId" placeholder="e.g. Uz89UT" />
     <label>Verified Sender Email</label>
@@ -384,12 +399,16 @@ async function submitToKlaviyo() {
   const errorEl = document.getElementById("modalError");
   const submitBtn = document.getElementById("modalSubmit");
   const templateType = document.getElementById("modalTemplateType").value;
+  const apiKeyField = document.getElementById("modalApiKey");
+  const apiKey = apiKeyField ? apiKeyField.value.trim() : "";
 
-  if (!listId || !fromEmail) {
-    errorEl.textContent = "Both fields are required.";
-    errorEl.style.display = "block";
-    return;
-  }
+  if (!listId || !fromEmail || (klaviyoConfig.requireApiKey && !apiKey)) {
+  errorEl.textContent = klaviyoConfig.requireApiKey
+    ? "List ID, sender email, and API key are all required."
+    : "List ID and sender email are required.";
+  errorEl.style.display = "block";
+  return;
+}
 
   errorEl.style.display = "none";
   submitBtn.disabled = true;
@@ -399,7 +418,7 @@ async function submitToKlaviyo() {
     const res = await fetch(`${API_BASE}/api/push-to-klaviyo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail, templateType }),
+      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail, templateType, apiKey }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to push to Klaviyo.");
