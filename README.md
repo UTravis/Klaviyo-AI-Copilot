@@ -48,13 +48,13 @@ put it live in Klaviyo."
 
 ```
 klaviyo-ai-tool/
-├── backend/
-│   ├── server.js          # Express server, API routes
-│   ├── promptBuilder.js   # Encodes flow-type strategy into the Claude prompt
-│   ├── package.json       # Includes the "stage" field — see Setup
-│   └── .env.example       # Copy to .env and fill in your keys
-└── frontend/
-    └── index.html         # Single-page UI, no build step needed
+└── backend/
+    ├── public/
+    │   └── index.html      # Single-page UI, no build step needed
+    ├── server.js           # Express server, API routes, Klaviyo integration
+    ├── promptBuilder.js    # Encodes flow/campaign strategy into the Gemini prompt
+    ├── package.json        # Includes the "stage" field — see Setup
+    └── .env.example        # Copy to .env and fill in your keys
 ```
 
 

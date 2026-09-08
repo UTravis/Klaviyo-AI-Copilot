@@ -11,7 +11,8 @@ const isProduction = pkg.stage === "production";
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static("../frontend"));
+const path = require("path");
+app.use(express.static(path.join(__dirname, "public")));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
@@ -281,5 +282,11 @@ app.get("/api/config", (req, res) => {
   res.json({ requireApiKey: isProduction });
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+if (require.main === module) {
+  // Only start a listening server when run directly (local `npm start`).
+  // On Vercel, this file is imported as a serverless function instead.
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+}
+
+module.exports = app;
