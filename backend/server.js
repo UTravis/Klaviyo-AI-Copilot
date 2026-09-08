@@ -5,8 +5,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { buildPrompt } = require("./promptBuilder");
 
 //checking state: developement || production
-const pkg = require("./package.json");
-const isProduction = pkg.stage === "production"; 
+//checking state: developement || production
+const isProduction = process.env.APP_STAGE === "production";
 
 const app = express();
 app.use(cors());

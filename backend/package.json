@@ -4,7 +4,6 @@
   "description": "AI-powered flow copy generator for Klaviyo",
   "main": "server.js",
   "type": "commonjs",
-  "stage": "development",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"

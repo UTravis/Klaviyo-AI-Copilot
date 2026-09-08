@@ -66,11 +66,10 @@ klaviyo-ai-tool/
    - `KLAVIYO_API_KEY` — your Klaviyo private API key (Settings > API Keys). Needs
      `campaigns:write`, `templates:write`, and `lists:read` scopes. Only used locally —
      see the `stage` setting below.
-3. In `backend/package.json`, set `"stage"` to `"development"` for local use, or
-   `"production"` before deploying publicly (e.g. to Vercel):
-   - **`"development"`**: the server uses your own `KLAVIYO_API_KEY` from `.env`
+3. Set `APP_STAGE` in your `.env` (or your deployment platform's environment variables) to control Klaviyo key handling:
+   - **`development`**: the server uses your own `KLAVIYO_API_KEY` from `.env`
      automatically. The Klaviyo push modal won't ask for a key.
-   - **`"production"`**: the server ignores `KLAVIYO_API_KEY` entirely and requires
+   - **`production`**: the server ignores `KLAVIYO_API_KEY` entirely and requires
      each visitor to enter their own Klaviyo key in the modal, used only for that one
      request. This matters for a public deployment — without it, every visitor's
      "Push to Klaviyo" click would create campaigns in *your* Klaviyo account.
