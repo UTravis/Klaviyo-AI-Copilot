@@ -358,7 +358,10 @@ async function pushToKlaviyo(subjectLine, previewText, body) {
 
   const apiKeyFieldHtml = klaviyoConfig.requireApiKey
     ? `<label>Your Klaviyo Private API Key</label>
-       <input id="modalApiKey" type="password" placeholder="pk_xxxxxxxx" />
+       <div style="display:flex; gap:8px;">
+         <input id="modalApiKey" type="password" placeholder="pk_xxxxxxxx" style="flex:1;" />
+         <button type="button" class="secondary" id="loadListsBtn" style="margin:0; white-space:nowrap;">Load Lists</button>
+       </div>
        <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
          Never stored — used only for this request. Get yours in Klaviyo under Settings → API Keys.
        </p>`
@@ -368,8 +371,11 @@ async function pushToKlaviyo(subjectLine, previewText, body) {
   content.innerHTML = `
     <h3>Push to Klaviyo</h3>
     ${apiKeyFieldHtml}
-    <label>Klaviyo List/Segment ID</label>
-    <input id="modalListId" placeholder="e.g. Uz89UT" />
+    <label>Campaign Name <span style="color: var(--muted); font-weight: 400;">(internal name in Klaviyo, max 60 chars)</span></label>
+    <input id="modalCampaignName" maxlength="60" placeholder="e.g. Labor Day Sale 2026" />
+    <label>Klaviyo List/Segment</label>
+    <select id="modalListId"><option value="">${klaviyoConfig.requireApiKey ? "Enter your API key and click Load Lists" : "Loading lists..."}</option></select>
+    <button type="button" class="secondary" id="retryListsBtn" style="display:none; margin-top:8px; padding:6px 10px; font-size:0.8rem;">Retry loading lists</button>
     <label>Verified Sender Email</label>
     <input id="modalFromEmail" placeholder="you@yourdomain.com" />
     <label>Email Template Type</label>
@@ -387,7 +393,58 @@ async function pushToKlaviyo(subjectLine, previewText, body) {
   modal.classList.add("open");
   document.getElementById("modalCancel").addEventListener("click", closeModal);
   document.getElementById("modalSubmit").addEventListener("click", submitToKlaviyo);
+
+  if (klaviyoConfig.requireApiKey) {
+    document.getElementById("loadListsBtn").addEventListener("click", loadKlaviyoLists);
+  } else {
+    loadKlaviyoLists(); // dev mode: server already has the key, fetch immediately
+  }
+
+  document.getElementById("retryListsBtn").addEventListener("click", loadKlaviyoLists);
 }
+
+
+async function loadKlaviyoLists() {
+  const apiKeyField = document.getElementById("modalApiKey");
+  const apiKey = apiKeyField ? apiKeyField.value.trim() : "";
+  const listSelect = document.getElementById("modalListId");
+  const retryBtn = document.getElementById("retryListsBtn");
+  const errorEl = document.getElementById("modalError");
+
+  if (klaviyoConfig.requireApiKey && !apiKey) {
+    return; // nothing typed yet, don't fetch on an empty blur
+  }
+
+  listSelect.disabled = true;
+  listSelect.innerHTML = `<option value="">Loading lists...</option>`;
+  retryBtn.style.display = "none";
+  errorEl.style.display = "none";
+
+  try {
+    const res = await fetch(`${API_BASE}/api/klaviyo-lists`, {
+      headers: apiKey ? { "x-klaviyo-key": apiKey } : {},
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load lists.");
+
+    if (data.lists.length === 0) {
+      listSelect.innerHTML = `<option value="">No lists found in this account</option>`;
+      return;
+    }
+
+    listSelect.innerHTML = data.lists
+        .map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`)
+        .join("");
+      listSelect.disabled = false;
+    } catch (err) {
+      listSelect.innerHTML = `<option value="">Couldn't load lists</option>`;
+      retryBtn.style.display = "inline-block";
+      errorEl.textContent = err.message;
+      errorEl.style.display = "block";
+    }
+}
+
+
 
 function closeModal() {
   document.getElementById("klaviyoModal").classList.remove("open");
@@ -397,19 +454,20 @@ function closeModal() {
 async function submitToKlaviyo() {
   const listId = document.getElementById("modalListId").value.trim();
   const fromEmail = document.getElementById("modalFromEmail").value.trim();
+  const campaignName = document.getElementById("modalCampaignName").value.trim();
   const errorEl = document.getElementById("modalError");
   const submitBtn = document.getElementById("modalSubmit");
   const templateType = document.getElementById("modalTemplateType").value;
   const apiKeyField = document.getElementById("modalApiKey");
   const apiKey = apiKeyField ? apiKeyField.value.trim() : "";
 
-  if (!listId || !fromEmail || (klaviyoConfig.requireApiKey && !apiKey)) {
-  errorEl.textContent = klaviyoConfig.requireApiKey
-    ? "List ID, sender email, and API key are all required."
-    : "List ID and sender email are required.";
-  errorEl.style.display = "block";
-  return;
-}
+  if (!listId || !fromEmail || !campaignName || (klaviyoConfig.requireApiKey && !apiKey)) {
+    errorEl.textContent = klaviyoConfig.requireApiKey
+      ? "Campaign name, list, sender email, and API key are all required."
+      : "Campaign name, list, and sender email are required.";
+    errorEl.style.display = "block";
+    return;
+  }
 
   errorEl.style.display = "none";
   submitBtn.disabled = true;
@@ -419,7 +477,7 @@ async function submitToKlaviyo() {
     const res = await fetch(`${API_BASE}/api/push-to-klaviyo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail, templateType, apiKey }),
+      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail, templateType, apiKey, campaignName }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to push to Klaviyo.");

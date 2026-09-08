@@ -61,8 +61,17 @@ app.post("/api/generate", async (req, res) => {
   } catch (err) {
     console.error("Generate error:", err);
     const status = err.status || 500;
-    const message = (status === 503) ? "The model is experiencing high demand right now." : "Failed to generate copy."; //change error message here
-    res.status(status).json({ error: message, details: err.message });
+
+    // A raw "fetch failed" (network hiccup, DNS blip, connection timeout) looks
+    // just as unresponsive to the user as a real 503 high-demand response, so
+    // treat both the same way instead of showing a generic failure message.
+    const isNetworkFailure = err.message?.includes("fetch failed") || Boolean(err.cause);
+    const message =
+      status === 503 || isNetworkFailure
+        ? "Please try again later — the model is experiencing high demand right now."
+        : "Failed to generate copy.";
+
+    res.status(isNetworkFailure ? 503 : status).json({ error: message, details: err.message });
   }
 });
 
@@ -81,7 +90,7 @@ app.post("/api/generate", async (req, res) => {
 const KLAVIYO_REVISION = "2026-07-15";
 
 app.post("/api/push-to-klaviyo", async (req, res) => {
-  const { subjectLine, previewText, body, listId, fromEmail, fromLabel, templateType, apiKey } = req.body;
+  const { subjectLine, previewText, body, listId, fromEmail, fromLabel, templateType, apiKey, campaignName } = req.body;
 
   let effectiveApiKey;
   if (isProduction) {
@@ -100,6 +109,10 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
     }
   }
 
+  if (!campaignName || !campaignName.trim()) {
+    return res.status(400).json({ error: "campaignName is required." });
+  }
+  const safeCampaignName = campaignName.trim().slice(0, 60);
 
   if (!listId) {
     return res.status(400).json({ error: "listId is required (a Klaviyo list/segment ID to attach the draft to)." });
@@ -123,7 +136,7 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
         data: {
           type: "campaign",
           attributes: {
-            name: subjectLine.slice(0, 50),
+            name: `Copilot Created | ${safeCampaignName}`,
             audiences: { included: [listId] },
             "campaign-messages": {
               data: [
@@ -222,6 +235,43 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
   } catch (err) {
     console.error("Klaviyo push error:", err);
     res.status(500).json({ error: "Failed to push to Klaviyo.", details: err.message });
+  }
+});
+
+
+// Endpoint to get all lists
+app.get("/api/klaviyo-lists", async (req, res) => {
+  const apiKey = req.headers["x-klaviyo-key"];
+  const serverKey = process.env.KLAVIYO_API_KEY;
+  const effectiveApiKey = isProduction ? apiKey : (serverKey || apiKey);
+
+  if (!effectiveApiKey) {
+    return res.status(400).json({ error: "A Klaviyo API key is required to fetch lists." });
+  }
+
+  try {
+    const listsRes = await fetch("https://a.klaviyo.com/api/lists/", {
+      method: "GET",
+      headers: {
+        Authorization: `Klaviyo-API-Key ${effectiveApiKey}`,
+        revision: "2026-07-15",
+      },
+    });
+
+    const data = await listsRes.json();
+    if (!listsRes.ok) {
+      return res.status(listsRes.status).json({ error: "Failed to fetch Klaviyo lists.", details: data });
+    }
+
+    const lists = data.data.map((list) => ({
+      id: list.id,
+      name: list.attributes.name,
+    }));
+
+    res.json({ lists });
+  } catch (err) {
+    console.error("Klaviyo lists fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch Klaviyo lists.", details: err.message });
   }
 });
 
