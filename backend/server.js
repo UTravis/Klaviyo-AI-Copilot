@@ -12,6 +12,27 @@ app.use(express.static("../frontend"));
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
+// Klaviyo Template Builder helper
+function buildTemplateHtml(body, templateType) {
+  const paragraphs = body
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => `<p>${p}</p>`)
+    .join("");
+
+  if (templateType === "HYBRID") {
+    return `<html><body>
+      <table role="presentation" width="100%"><tr>
+        <td align="center" data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+          <div class="klaviyo-block klaviyo-text-block">${paragraphs}</div>
+        </td>
+      </tr></table>
+    </body></html>`;
+  }
+
+  return `<html><body>${paragraphs}</body></html>`;
+}
+
 // ---- Route 1: Generate flow copy ----
 app.post("/api/generate", async (req, res) => {
   const {  brandName, productDescription, toneNotes, flowType, campaignObjective, targetAudience } = req.body;
@@ -61,7 +82,7 @@ const KLAVIYO_HEADERS = {
 };
 
 app.post("/api/push-to-klaviyo", async (req, res) => {
-  const { subjectLine, previewText, body, listId, fromEmail, fromLabel } = req.body;
+  const { subjectLine, previewText, body, listId, fromEmail, fromLabel, templateType } = req.body;
 
   if (!process.env.KLAVIYO_API_KEY) {
     return res.status(400).json({ error: "KLAVIYO_API_KEY is not configured on the server." });
@@ -126,8 +147,8 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
           type: "template",
           attributes: {
             name: `${subjectLine.slice(0, 40)} — AI Template`,
-            editor_type: "CODE",
-            html: `<html><body><p>${body.replace(/\n/g, "</p><p>")}</p></body></html>`,
+            editor_type: templateType === "HYBRID" ? "USER_DRAGGABLE" : "CODE",
+            html: buildTemplateHtml(body, templateType),
           },
         },
       }),

@@ -356,6 +356,11 @@ function pushToKlaviyo(subjectLine, previewText, body) {
     <input id="modalListId" placeholder="e.g. Uz89UT" />
     <label>Verified Sender Email</label>
     <input id="modalFromEmail" placeholder="you@yourdomain.com" />
+    <label>Email Template Type</label>
+    <select id="modalTemplateType">
+      <option value="CODE">Plain HTML (code editor)</option>
+      <option value="HYBRID">Drag-and-drop editable</option>
+    </select>
     <div class="modal-error" id="modalError"></div>
     <div class="modal-actions">
       <button class="secondary" id="modalCancel">Cancel</button>
@@ -378,6 +383,7 @@ async function submitToKlaviyo() {
   const fromEmail = document.getElementById("modalFromEmail").value.trim();
   const errorEl = document.getElementById("modalError");
   const submitBtn = document.getElementById("modalSubmit");
+  const templateType = document.getElementById("modalTemplateType").value;
 
   if (!listId || !fromEmail) {
     errorEl.textContent = "Both fields are required.";
@@ -393,7 +399,7 @@ async function submitToKlaviyo() {
     const res = await fetch(`${API_BASE}/api/push-to-klaviyo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail }),
+      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail, templateType }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to push to Klaviyo.");
