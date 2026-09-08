@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Klaviyo AI Flow Copy Generator</title>
+<title>Klaviyo Copilot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
   :root {
@@ -116,12 +116,70 @@
 }
 .copy-btn:hover { color: var(--text); border-color: var(--accent); }
 .copy-btn svg { width: 14px; height: 14px; }
+
+.coming-soon-btn {
+  background: transparent;
+  border: 1px dashed #6c5ce7;
+  color: #a78bfa;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.coming-soon-btn:hover { background: transparent; }
+.coming-soon-btn .badge {
+  background: #6c5ce7;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: var(--card);
+  border: 1px solid #2c2c38;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+}
+.modal-box h3 { margin-top: 0; }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.modal-actions button { margin-top: 0; flex: 1; }
+.modal-success svg { width: 40px; height: 40px; color: #4ade80; display: block; margin: 0 auto 12px; }
+.modal-success a {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.modal-success a:hover { text-decoration: underline; }
+.modal-error { color: #ff6b6b; font-size: 0.9rem; margin-top: 10px; display: none; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>⚡ Klaviyo AI Flow Copy Generator</h1>
-  <p class="subtitle">Draft an on-brand Klaviyo flow in seconds, built on real lifecycle strategy.</p>
+  <h1>⚡ Klaviyo Copilot</h1>
+  <p class="subtitle">Generate on-brand copy and push it live to Klaviyo, built on real lifecycle strategy.</p>
 
   <div class="card">
     <label>Brand Name</label>
@@ -150,7 +208,7 @@
       <textarea id="targetAudience" placeholder="e.g. Past purchasers who haven't bought in 60+ days"></textarea>
     </div>
 
-    <button id="generateBtn" onclick="generateFlow()">Generate Flow Copy</button>
+    <button id="generateBtn" onclick="generateFlow()">Generate Copy</button>
     <div class="loading" id="loading">Generating... this usually takes 10-20 seconds.</div>
     <div id="error"></div>
   </div>
@@ -187,7 +245,7 @@ async function generateFlow() {
     targetAudience: document.getElementById("targetAudience").value.trim(),
   };
 
-  if (!payload.brandName || !payload.productDescription || !toneNotes) {
+  if (!payload.brandName || !payload.productDescription || !payload.toneNotes) {
     error.textContent = "Please fill in brand name, product description and the brand tone/voice.";
     error.style.display = "block";
     return;
@@ -230,6 +288,11 @@ function renderResults(data) {
   data.emails.forEach((email, i) => {
     const block = document.createElement("div");
     block.className = "card email-block";
+    const isCampaign = data.flowType === "campaign";
+    const actionHtml = isCampaign
+    ? `<button class="secondary push-btn">Push to Klaviyo (draft)</button>`
+    : `<button class="coming-soon-btn" disabled><span class="badge">Coming Soon</span> Direct Klaviyo Flow Integration</button>`;
+
     block.innerHTML = `
       <div class="email-header">
         <h3>Email ${i + 1}</h3>
@@ -245,15 +308,17 @@ function renderResults(data) {
       <div class="subject-variant">${escapeHtml(email.previewText)}</div>
       <label>Body Copy</label>
       <div class="body-copy">${escapeHtml(email.body)}</div>
-      <button class="secondary push-btn">Push to Klaviyo (draft)</button>
+      ${actionHtml}
     `;
 
     block.querySelector(".copy-btn").addEventListener("click", (e) => {
       copyEmail(e.currentTarget, email.subjectLines[0], email.previewText, email.body);
     });
-    block.querySelector(".push-btn").addEventListener("click", () => {
-      pushToKlaviyo(email.subjectLines[0], email.previewText, email.body);
-    });
+    if (isCampaign) {
+      block.querySelector(".push-btn").addEventListener("click", () => {
+        pushToKlaviyo(email.subjectLines[0], email.previewText, email.body);
+      });
+    }
 
     results.appendChild(block);
   });
@@ -278,22 +343,88 @@ async function copyEmail(btn, subjectLine, previewText, body) {
   }
 }
 
-async function pushToKlaviyo(subjectLine, previewText, body) {
-  const listId = prompt("Enter the Klaviyo List/Segment ID to attach this draft campaign to:");
-  if (!listId) return;
+let pendingEmailData = null;
+
+function pushToKlaviyo(subjectLine, previewText, body) {
+  pendingEmailData = { subjectLine, previewText, body };
+  const modal = document.getElementById("klaviyoModal");
+  const content = document.getElementById("klaviyoModalContent");
+
+  content.innerHTML = `
+    <h3>Push to Klaviyo</h3>
+    <label>Klaviyo List/Segment ID</label>
+    <input id="modalListId" placeholder="e.g. Uz89UT" />
+    <label>Verified Sender Email</label>
+    <input id="modalFromEmail" placeholder="you@yourdomain.com" />
+    <div class="modal-error" id="modalError"></div>
+    <div class="modal-actions">
+      <button class="secondary" id="modalCancel">Cancel</button>
+      <button id="modalSubmit">Create Draft Campaign</button>
+    </div>
+  `;
+
+  modal.classList.add("open");
+  document.getElementById("modalCancel").addEventListener("click", closeModal);
+  document.getElementById("modalSubmit").addEventListener("click", submitToKlaviyo);
+}
+
+function closeModal() {
+  document.getElementById("klaviyoModal").classList.remove("open");
+  pendingEmailData = null;
+}
+
+async function submitToKlaviyo() {
+  const listId = document.getElementById("modalListId").value.trim();
+  const fromEmail = document.getElementById("modalFromEmail").value.trim();
+  const errorEl = document.getElementById("modalError");
+  const submitBtn = document.getElementById("modalSubmit");
+
+  if (!listId || !fromEmail) {
+    errorEl.textContent = "Both fields are required.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  errorEl.style.display = "none";
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Creating...";
 
   try {
     const res = await fetch(`${API_BASE}/api/push-to-klaviyo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subjectLine, previewText, body, listId }),
+      body: JSON.stringify({ ...pendingEmailData, listId, fromEmail }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to push to Klaviyo.");
-    alert("Draft campaign created in Klaviyo!");
+
+    showSuccessModal(data.campaignId);
   } catch (err) {
-    alert("Error: " + err.message);
+    errorEl.textContent = err.message;
+    errorEl.style.display = "block";
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Create Draft Campaign";
   }
+}
+
+function showSuccessModal(campaignId) {
+  const content = document.getElementById("klaviyoModalContent");
+  const campaignUrl = `https://www.klaviyo.com/campaign/${campaignId}/wizard`;
+
+  content.innerHTML = `
+    <div class="modal-success">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+      <h3 style="text-align:center;">Draft campaign created!</h3>
+      <p style="text-align:center; color: var(--muted); font-size: 0.9rem;">Your content has been attached and it's ready to review in Klaviyo.</p>
+      <div style="text-align:center;">
+        <a href="${campaignUrl}" target="_blank" rel="noopener noreferrer">Open campaign in Klaviyo →</a>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="modalClose">Done</button>
+    </div>
+  `;
+  document.getElementById("modalClose").addEventListener("click", closeModal);
 }
 
 function escapeHtml(str) {
@@ -302,5 +433,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 </script>
+
+<div class="modal-overlay" id="klaviyoModal">
+  <div class="modal-box" id="klaviyoModalContent"></div>
+</div>
 </body>
 </html>

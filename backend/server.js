@@ -36,18 +36,32 @@ app.post("/api/generate", async (req, res) => {
   } catch (err) {
     console.error("Generate error:", err);
     const status = err.status || 500;
-    const message = (status === 503) ? "The model is experiencing high demand right now." : "Failed to generate copy.";
+    const message = (status === 503) ? "The model is experiencing high demand right now." : "Failed to generate copy."; //change error message here
     res.status(status).json({ error: message, details: err.message });
   }
 });
 
 // ---- Route 2: Push a generated email as a draft campaign to Klaviyo ----
 // NOTE: This creates a DRAFT campaign only — it will never send automatically.
-// Klaviyo's flow-creation API is more involved (flow definitions require
-// trigger/action graph setup), so for a v1 portfolio demo, pushing each email
-// as a draft Campaign is the fastest way to prove real API integration.
+//
+// This is a 3-step chain, verified manually via Postman:
+//   1. POST /api/campaigns/                     -> get campaign.id + message.id
+//   2. POST /api/templates/                      -> create a template with the
+//                                                    actual HTML body, get template.id
+//   3. POST /api/campaign-message-assign-template/
+//                                                 -> clone that template onto the
+//                                                    message from step 1
+// Klaviyo's Create Campaign call alone only sets subject/preview/from info —
+// the actual body content has to be attached via a template, separately.
+const KLAVIYO_REVISION = "2026-07-15";
+const KLAVIYO_HEADERS = {
+  Authorization: `Klaviyo-API-Key ${process.env.KLAVIYO_API_KEY}`,
+  "Content-Type": "application/json",
+  revision: KLAVIYO_REVISION,
+};
+
 app.post("/api/push-to-klaviyo", async (req, res) => {
-  const { subjectLine, previewText, body, listId } = req.body;
+  const { subjectLine, previewText, body, listId, fromEmail, fromLabel } = req.body;
 
   if (!process.env.KLAVIYO_API_KEY) {
     return res.status(400).json({ error: "KLAVIYO_API_KEY is not configured on the server." });
@@ -55,15 +69,15 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
   if (!listId) {
     return res.status(400).json({ error: "listId is required (a Klaviyo list/segment ID to attach the draft to)." });
   }
+  if (!fromEmail) {
+    return res.status(400).json({ error: "fromEmail is required (the sender email address on your verified Klaviyo domain)." });
+  }
 
   try {
-    const klaviyoRes = await fetch("https://a.klaviyo.com/api/campaigns/", {
+    // --- Step 1: Create the campaign shell + message ---
+    const campaignRes = await fetch("https://a.klaviyo.com/api/campaigns/", {
       method: "POST",
-      headers: {
-        Authorization: `Klaviyo-API-Key ${process.env.KLAVIYO_API_KEY}`,
-        "Content-Type": "application/json",
-        revision: "2024-10-15",
-      },
+      headers: KLAVIYO_HEADERS,
       body: JSON.stringify({
         data: {
           type: "campaign",
@@ -75,11 +89,16 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
                 {
                   type: "campaign-message",
                   attributes: {
-                    channel: "email",
-                    content: {
-                      subject: subjectLine,
-                      preview_text: previewText,
-                      body: body,
+                    definition: {
+                      channel: "email",
+                      label: "AI Generated",
+                      content: {
+                        subject: subjectLine,
+                        preview_text: previewText,
+                        from_email: fromEmail,
+                        from_label: fromLabel || fromEmail,
+                        reply_to_email: fromEmail,
+                      },
                     },
                   },
                 },
@@ -90,13 +109,75 @@ app.post("/api/push-to-klaviyo", async (req, res) => {
       }),
     });
 
-    const data = await klaviyoRes.json();
-
-    if (!klaviyoRes.ok) {
-      return res.status(klaviyoRes.status).json({ error: "Klaviyo API error", details: data });
+    const campaignData = await campaignRes.json();
+    if (!campaignRes.ok) {
+      return res.status(campaignRes.status).json({ error: "Failed to create campaign.", details: campaignData });
     }
 
-    res.json({ success: true, klaviyoResponse: data });
+    const campaignId = campaignData.data.id;
+    const messageId = campaignData.data.relationships["campaign-messages"].data[0].id;
+
+    // --- Step 2: Create a template with the actual body copy ---
+    const templateRes = await fetch("https://a.klaviyo.com/api/templates/", {
+      method: "POST",
+      headers: KLAVIYO_HEADERS,
+      body: JSON.stringify({
+        data: {
+          type: "template",
+          attributes: {
+            name: `${subjectLine.slice(0, 40)} — AI Template`,
+            editor_type: "CODE",
+            html: `<html><body><p>${body.replace(/\n/g, "</p><p>")}</p></body></html>`,
+          },
+        },
+      }),
+    });
+
+    const templateData = await templateRes.json();
+    if (!templateRes.ok) {
+      console.error("Klaviyo template creation failed:", JSON.stringify(templateData, null, 2));
+      return res.status(templateRes.status).json({
+        error: "Campaign was created, but failed to create template.",
+        campaignId,
+        details: templateData,
+      });
+    }
+
+    const templateId = templateData.data.id;
+
+    // --- Step 3: Assign the template to the campaign message ---
+    const assignRes = await fetch("https://a.klaviyo.com/api/campaign-message-assign-template/", {
+      method: "POST",
+      headers: KLAVIYO_HEADERS,
+      body: JSON.stringify({
+        data: {
+          type: "campaign-message",
+          id: messageId,
+          relationships: {
+            template: { data: { type: "template", id: templateId } },
+          },
+        },
+      }),
+    });
+
+  const assignData = await assignRes.json();
+  if (!assignRes.ok) {
+    console.error("Klaviyo template assignment failed:", JSON.stringify(assignData, null, 2));
+    return res.status(assignRes.status).json({
+      error: "Campaign and template were created, but failed to assign template to the message.",
+      campaignId,
+      templateId,
+      details: assignData,
+    });
+  }
+
+    res.json({
+      success: true,
+      campaignId,
+      messageId,
+      templateId,
+      klaviyoResponse: assignData,
+    });
   } catch (err) {
     console.error("Klaviyo push error:", err);
     res.status(500).json({ error: "Failed to push to Klaviyo.", details: err.message });

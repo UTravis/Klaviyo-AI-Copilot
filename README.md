@@ -1,4 +1,17 @@
-# Klaviyo AI Flow Copy Generator
+# Klaviyo Copilot
+
+## What's new in v2
+
+- **Real Klaviyo integration, not just generation**: "Push to Klaviyo" now creates an actual draft campaign in your account with full body content attached — not just a subject line shell. Required chaining 3 Klaviyo API calls (create campaign → create template → assign template to message), since Klaviyo's Create Campaign endpoint alone doesn't accept body content.
+- **Campaign support alongside flows**: added a Campaign (single send) option with dedicated Campaign Objective and Target Audience inputs, so the AI writes toward a specific goal and audience instead of generic lifecycle copy.
+- **Cleaner, more human copy**: updated prompt rules to strip AI-sounding jargon ("unlock", "elevate", "seamless", etc.) and em dashes from generated copy.
+- **Modal-based UX**: replaced browser `prompt()`/`alert()` calls with a proper in-app modal for entering Klaviyo details and viewing a success state with a direct link to the created campaign.
+- **Clearer roadmap signaling**: flows now show a distinct "Coming Soon" badge for direct Klaviyo Flow integration, since flows require a different (and more complex) API approach than campaigns — see the "v3 idea" note below.
+- Rebranded from "Klaviyo AI Flow Copy Generator" to **Klaviyo AI Campaign Studio**, since it now does more than generate copy.
+
+## What's next (v3 idea)
+
+Direct Klaviyo Flow integration is scoped but not yet built: Klaviyo's Flows API doesn't support creating a flow from scratch via API. The planned approach is to pre-build one template flow per flow type manually in the Klaviyo UI, then clone that flow's structure via the API and swap in AI-generated copy for each email step.
 
 Generates on-brand Klaviyo flow copy (welcome, abandoned cart, win-back, post-purchase)
 using Gemini 2.0 Flash, with real lifecycle-marketing structure baked into the prompt —

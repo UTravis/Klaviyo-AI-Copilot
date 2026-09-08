@@ -60,35 +60,40 @@ function buildPrompt({ brandName, productDescription, toneNotes, flowType, campa
 
   return `You are a senior CRM/lifecycle email strategist writing ${isCampaign ? "a one-off email campaign" : "a Klaviyo flow"} for a DTC brand. Write copy that a real agency would send to a client — specific, on-brand, and structured around proven ${isCampaign ? "campaign" : "flow"} mechanics, not generic AI filler.
 
-BRAND: ${brandName}
-PRODUCT/OFFER CONTEXT: ${productDescription}
-TONE/VOICE NOTES: ${toneNotes || "Friendly, direct, no corporate jargon."}
-${isCampaign ? "TYPE: One-off Campaign" : `FLOW TYPE: ${flowType.replace("_", " ")}`}${campaignContext}
-${isCampaign ? "STRATEGY" : "FLOW STRATEGY"} TO FOLLOW:
-Goal: ${guidance.goal}
-${isCampaign ? "Approach" : `Structure (${guidance.emailCount} emails)`}:
-${guidance.structure.map((s, i) => `${i + 1}. ${s}`).join("\n")}
-${isCampaign ? "\nMake sure the copy speaks directly to the stated target audience and drives toward the stated campaign objective — this is not generic brand messaging." : ""}
+          BRAND: ${brandName}
+          PRODUCT/OFFER CONTEXT: ${productDescription}
+          TONE/VOICE NOTES: ${toneNotes || "Friendly, direct, no corporate jargon."}
+          ${isCampaign ? "TYPE: One-off Campaign" : `FLOW TYPE: ${flowType.replace("_", " ")}`}${campaignContext}
+          ${isCampaign ? "STRATEGY" : "FLOW STRATEGY"} TO FOLLOW:
+          Goal: ${guidance.goal}
+          ${isCampaign ? "Approach" : `Structure (${guidance.emailCount} emails)`}:
+          ${guidance.structure.map((s, i) => `${i + 1}. ${s}`).join("\n")}
+          ${isCampaign ? "\nMake sure the copy speaks directly to the stated target audience and drives toward the stated campaign objective — this is not generic brand messaging." : ""}
 
-For EACH email${isCampaign ? " (there is only one)" : " in the flow"}, output:
-- Send timing (from the structure above)
-- Subject line (2 variants, for A/B testing — make them meaningfully different angles, e.g. curiosity vs. benefit-led, not just reworded)
-- Preview text
-- Full email body copy (concise, scannable, with a clear single CTA)
+          For EACH email${isCampaign ? " (there is only one)" : " in the flow"}, output:
+          - Send timing (from the structure above)
+          - Subject line (2 variants, for A/B testing — make them meaningfully different angles, e.g. curiosity vs. benefit-led, not just reworded)
+          - Preview text
+          - Full email body copy (concise, scannable, with a clear single CTA)
 
-Respond ONLY in valid JSON, no markdown fences, no preamble, in this exact shape:
-{
-  "flowType": "${flowType}",
-  "emails": [
-    {
-      "sendTiming": "...",
-      "subjectLines": ["...", "..."],
-      "previewText": "...",
-      "body": "...",
-      "cta": "..."
-    }
-  ]
-}`;
+          WRITING STYLE RULES (apply to all copy, no exceptions):
+          - Do NOT use em dashes (—) anywhere in the copy. Use a period, comma, or restructure the sentence instead.
+          - Avoid AI-sounding jargon and clichés: "unlock", "elevate", "seamless", "revolutionize", "game-changer", "dive into", "in today's fast-paced world", "look no further", "unleash", "empower", "journey", "elevate your", "in a world where". Write like a real person who knows the brand, not like generic marketing filler.
+          - Write in plain, direct language a real customer would actually respond to.
+
+          Respond ONLY in valid JSON, no markdown fences, no preamble, in this exact shape:
+          {
+            "flowType": "${flowType}",
+            "emails": [
+              {
+                "sendTiming": "...",
+                "subjectLines": ["...", "..."],
+                "previewText": "...",
+                "body": "...",
+                "cta": "..."
+              }
+            ]
+          }`;
 }
 
 module.exports = { buildPrompt, FLOW_GUIDANCE };
